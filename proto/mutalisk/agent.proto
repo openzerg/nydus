@@ -1,0 +1,638 @@
+syntax = "proto3";
+
+package openzerg;
+
+option go_package = "github.com/openzerg/nydus/gen/go/mutaliskpb;mutaliskpb";
+
+service Agent {
+  // Session management
+  rpc ListSessions(ListSessionsRequest) returns (SessionListResponse);
+  rpc GetSession(GetSessionRequest) returns (SessionInfo);
+  rpc CreateSession(CreateSessionRequest) returns (SessionInfo);
+  rpc DeleteSession(DeleteSessionRequest) returns (Empty);
+  rpc GetSessionMessages(GetSessionMessagesRequest) returns (MessageListResponse);
+  rpc SendSessionChat(SendSessionChatRequest) returns (Empty);
+  rpc InterruptSession(InterruptSessionRequest) returns (Empty);
+  rpc SwitchAgent(SwitchAgentRequest) returns (Empty);
+  rpc UploadFile(UploadFileRequest) returns (UploadFileResponse);
+  rpc GetSessionContext(GetSessionContextRequest) returns (SessionContextResponse);
+  rpc CompactSession(CompactSessionRequest) returns (CompactSessionResponse);
+  rpc GetHistoryMessages(GetHistoryMessagesRequest) returns (MessageListResponse);
+  rpc DeleteMessagesFrom(DeleteMessagesFromRequest) returns (DeleteMessagesFromResponse);
+  rpc ForkSession(ForkSessionRequest) returns (ForkSessionResponse);
+  rpc UserQuestion(UserQuestionRequest) returns (stream UserQuestionEvent);
+  
+  // Session management for chatroom (external_id based)
+  rpc GetOrCreateSessionByExternalId(GetOrCreateSessionByExternalIdRequest) returns (SessionInfo);
+  rpc GetSessionByExternalId(GetSessionByExternalIdRequest) returns (SessionInfo);
+  rpc AddMessageToSession(AddMessageToSessionRequest) returns (MessageInfo);
+
+  // Process management
+  rpc ListProcesses(ListProcessesRequest) returns (ProcessListResponse);
+  rpc GetProcess(GetProcessRequest) returns (ProcessInfo);
+  rpc GetProcessOutput(GetProcessOutputRequest) returns (ProcessOutputResponse);
+  rpc KillProcess(KillProcessRequest) returns (Empty);
+
+  // Task management
+  rpc ListTasks(ListTasksRequest) returns (TaskListResponse);
+  rpc GetTask(GetTaskRequest) returns (TaskInfo);
+
+  // Messages
+  rpc SendMessage(SendMessageRequest) returns (Empty);
+  rpc SendRemind(SendRemindRequest) returns (Empty);
+
+  // Builtin tools
+  rpc ListBuiltinTools(Empty) returns (BuiltinToolListResponse);
+  rpc ExecuteTool(ExecuteToolRequest) returns (ExecuteToolResponse);
+
+  // External tools
+  rpc ListExternalTools(Empty) returns (ExternalToolListResponse);
+  rpc RegisterExternalTool(RegisterExternalToolRequest) returns (ExternalToolInfo);
+  rpc UnregisterExternalTool(UnregisterExternalToolRequest) returns (Empty);
+  rpc SyncExternalTools(SyncExternalToolsRequest) returns (ExternalToolListResponse);
+  rpc SetToolVariable(SetToolVariableRequest) returns (Empty);
+
+  // Providers
+  rpc ListProviders(Empty) returns (ProviderListResponse);
+  rpc RegisterProvider(RegisterProviderRequest) returns (ProviderInfo);
+  rpc UpdateProvider(UpdateProviderRequest) returns (ProviderInfo);
+  rpc UnregisterProvider(UnregisterExternalToolRequest) returns (Empty);
+  rpc SetDefaultProvider(SetDefaultProviderRequest) returns (Empty);
+  rpc TestProviderConnection(TestProviderConnectionRequest) returns (TestProviderConnectionResponse);
+  
+  // Session Provider
+  rpc SetSessionProvider(SetSessionProviderRequest) returns (Empty);
+
+  // Skill Registries
+  rpc ListRegistries(Empty) returns (RegistryListResponse);
+  rpc AddRegistry(AddRegistryRequest) returns (RegistryInfo);
+  rpc RemoveRegistry(RemoveRegistryRequest) returns (Empty);
+
+  // Skills
+  rpc ListInstalledSkills(Empty) returns (SkillListResponse);
+  rpc ListRemoteSkills(ListRemoteSkillsRequest) returns (SkillListResponse);
+  rpc InstallSkill(InstallSkillRequest) returns (SkillInfo);
+  rpc UninstallSkill(UninstallSkillRequest) returns (Empty);
+  rpc GetSkill(GetSkillRequest) returns (SkillInfo);
+
+  // Timers
+  rpc ListTimers(ListTimersRequest) returns (TimerListResponse);
+  rpc CancelTimer(CancelTimerRequest) returns (Empty);
+
+  // Health check
+  rpc CheckHealth(Empty) returns (HealthResponse);
+
+  // Streaming
+  rpc SubscribeSessionEvents(SubscribeSessionEventsRequest) returns (stream SessionEvent);
+  rpc SubscribeGlobalEvents(Empty) returns (stream GlobalEvent);
+
+  // Question interaction
+  rpc AnswerQuestion(AnswerQuestionRequest) returns (Empty);
+}
+
+message Empty {}
+
+// Session types
+message SessionInfo {
+  string id = 1;
+  string purpose = 2;
+  string state = 3;
+  string agent = 4;
+  string provider_name = 5;
+  string created_at = 6;
+  int32 input_tokens = 7;
+  int32 output_tokens = 8;
+  bool has_compacted_history = 9;
+  int32 compacted_message_count = 10;
+  string parent_id = 11;
+  string session_type = 12;
+  string external_id = 13;
+}
+
+message SessionListResponse {
+  repeated SessionInfo sessions = 1;
+  int32 total = 2;
+}
+
+message ListSessionsRequest {
+  optional int32 offset = 1;
+  optional int32 limit = 2;
+}
+
+message GetSessionRequest {
+  string id = 1;
+}
+
+message CreateSessionRequest {
+  string purpose = 1;
+}
+
+message DeleteSessionRequest {
+  string id = 1;
+}
+
+message GetSessionMessagesRequest {
+  string session_id = 1;
+  optional int32 offset = 2;
+  optional int32 limit = 3;
+}
+
+message MessageInfo {
+  string id = 1;
+  string session_id = 2;
+  string role = 3;
+  string content = 4;
+  string timestamp = 5;
+  string tool_calls_json = 6;
+  string tool_name = 7;
+  string tool_call_id = 8;
+  bool tool_success = 9;
+}
+
+message MessageListResponse {
+  repeated MessageInfo messages = 1;
+  int32 total = 2;
+}
+
+message SendSessionChatRequest {
+  string session_id = 1;
+  string content = 2;
+}
+
+message InterruptSessionRequest {
+  string session_id = 1;
+  string message = 2;
+}
+
+message GetSessionContextRequest {
+  string session_id = 1;
+}
+
+message SessionContextResponse {
+  string context_json = 1;
+}
+
+// Process types
+message ProcessInfo {
+  string id = 1;
+  string command = 2;
+  string status = 3;
+  string started_at = 4;
+}
+
+message ProcessListResponse {
+  repeated ProcessInfo processes = 1;
+  int32 total = 2;
+}
+
+message ListProcessesRequest {
+  optional int32 offset = 1;
+  optional int32 limit = 2;
+}
+
+message GetProcessRequest {
+  string id = 1;
+}
+
+message GetProcessOutputRequest {
+  string process_id = 1;
+  optional string stream = 2;
+  optional int32 offset = 3;
+  optional int32 limit = 4;
+}
+
+message ProcessOutputResponse {
+  string content = 1;
+  int32 total_size = 2;
+}
+
+message KillProcessRequest {
+  string process_id = 1;
+  optional string signal = 2;
+  optional string session_id = 3;
+}
+
+// Task types
+message TaskInfo {
+  string id = 1;
+  string content = 2;
+  string status = 3;
+  string priority = 4;
+  string created_at = 5;
+}
+
+message TaskListResponse {
+  repeated TaskInfo tasks = 1;
+  int32 total = 2;
+}
+
+message ListTasksRequest {
+  optional int32 offset = 1;
+  optional int32 limit = 2;
+}
+
+message GetTaskRequest {
+  string id = 1;
+}
+
+// Message types
+message SendMessageRequest {
+  string content = 1;
+}
+
+message SendRemindRequest {
+  string message = 1;
+}
+
+// Builtin tools
+message BuiltinToolInfo {
+  string name = 1;
+  string description = 2;
+  string parameters_json = 3;
+}
+
+message BuiltinToolListResponse {
+  repeated BuiltinToolInfo tools = 1;
+}
+
+message ExecuteToolRequest {
+  string tool_name = 1;
+  string argsJson = 2;
+  optional string session_id = 3;
+}
+
+message ExecuteToolResponse {
+  string title = 1;
+  string output = 2;
+  string metadataJson = 3;
+  string attachmentsJson = 4;
+  bool truncated = 5;
+}
+
+message ExecuteBuiltinToolResponse {
+  string title = 1;
+  string output = 2;
+  string metadataJson = 3;
+  string attachmentsJson = 4;
+  bool truncated = 5;
+}
+
+message ExecuteExternalToolRequest {
+  string tool_name = 1;
+  string argsJson = 2;
+}
+
+message ExecuteExternalToolResponse {
+  string title = 1;
+  string output = 2;
+  string metadataJson = 3;
+  string attachmentsJson = 4;
+  bool truncated = 5;
+}
+
+// Health
+message HealthResponse {
+  bool healthy = 1;
+  string version = 2;
+}
+
+// Streaming events
+message SubscribeSessionEventsRequest {
+  string session_id = 1;
+}
+
+message SessionEvent {
+  string session_id = 1;
+  string event_type = 2;
+  string data_json = 3;
+  string timestamp = 4;
+}
+
+message GlobalEvent {
+  string event_type = 1;
+  string data_json = 2;
+  string timestamp = 3;
+}
+
+// External tools
+message ToolVariable {
+  string name = 1;
+  string value = 2;
+  string description = 3;
+  bool required = 4;
+}
+
+message ExternalToolInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string parameters_json = 4;
+  string config_json = 5;
+  repeated ToolVariable variables = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ExternalToolListResponse {
+  repeated ExternalToolInfo tools = 1;
+}
+
+message RegisterExternalToolRequest {
+  string name = 1;
+  string description = 2;
+  string parameters_json = 3;
+  string config_json = 4;
+  repeated ToolVariable variables = 5;
+}
+
+message UnregisterExternalToolRequest {
+  string name = 1;
+}
+
+message SyncExternalToolsRequest {
+  repeated ExternalToolInfo tools = 1;
+}
+
+message SetToolVariableRequest {
+  string tool_name = 1;
+  string variable_name = 2;
+  string value = 3;
+}
+
+// Providers
+message ProviderInfo {
+  string id = 1;
+  string name = 2;
+  string base_url = 3;
+  string api_key = 4;
+  string model = 5;
+  int32 max_tokens = 6;
+  double temperature = 7;
+  double top_p = 8;
+  int32 top_k = 9;
+  string extra_params_json = 10;
+  bool is_default = 11;
+  string created_at = 12;
+  string updated_at = 13;
+  int32 auto_compact_length = 14;
+}
+
+message ProviderListResponse {
+  repeated ProviderInfo providers = 1;
+}
+
+message RegisterProviderRequest {
+  string name = 1;
+  string base_url = 2;
+  string api_key = 3;
+  string model = 4;
+  int32 max_tokens = 5;
+  double temperature = 6;
+  double top_p = 7;
+  int32 top_k = 8;
+  string extra_params_json = 9;
+  int32 auto_compact_length = 10;
+  bool is_default = 11;
+}
+
+message UpdateProviderRequest {
+  string name = 1;
+  optional string base_url = 2;
+  optional string api_key = 3;
+  optional string model = 4;
+  optional int32 max_tokens = 5;
+  optional double temperature = 6;
+  optional double top_p = 7;
+  optional int32 top_k = 8;
+  optional string extra_params_json = 9;
+  optional int32 auto_compact_length = 10;
+  optional bool is_default = 11;
+}
+
+message SetDefaultProviderRequest {
+  string name = 1;
+}
+
+message TestProviderConnectionRequest {
+  string name = 1;
+}
+
+message TestProviderConnectionResponse {
+  bool success = 1;
+  string error = 2;
+  string model_info = 3;
+}
+
+message SetSessionProviderRequest {
+  string session_id = 1;
+  string provider_name = 2;
+}
+
+// Question interaction
+message AnswerQuestionRequest {
+  string request_id = 1;
+  string session_id = 2;
+  repeated QuestionAnswer answers = 3;
+}
+
+message QuestionAnswer {
+  repeated string selected = 1;
+  string text_input = 2;
+}
+
+// Agent mode switching
+message SwitchAgentRequest {
+  string session_id = 1;
+  string agent = 2;
+}
+
+// File upload
+message UploadFileRequest {
+  string session_id = 1;
+  string filename = 2;
+  bytes content = 3;
+}
+
+message UploadFileResponse {
+  string file_path = 1;
+}
+
+// Compact session
+message CompactSessionRequest {
+  string session_id = 1;
+}
+
+message CompactSessionResponse {
+  int32 messages_compacted = 1;
+  string summary_message_id = 2;
+}
+
+// Get history messages (before latest summary)
+message GetHistoryMessagesRequest {
+  string session_id = 1;
+  int32 offset = 2;
+  int32 limit = 3;
+}
+
+// Delete messages from a specific message onwards
+message DeleteMessagesFromRequest {
+  string session_id = 1;
+  string from_message_id = 2;
+}
+
+message DeleteMessagesFromResponse {
+  int32 deleted_count = 1;
+}
+
+// Skill Registries
+message RegistryInfo {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  bool has_api_key = 4;
+  string created_at = 5;
+}
+
+message RegistryListResponse {
+  repeated RegistryInfo registries = 1;
+}
+
+message AddRegistryRequest {
+  string name = 1;
+  string url = 2;
+  optional string api_key = 3;
+}
+
+message RemoveRegistryRequest {
+  string id = 1;
+}
+
+// Skills
+message SkillInfo {
+  string full_name = 1;
+  string name = 2;
+  string description = 3;
+  string registry_name = 4;
+  string location = 5;
+  bool installed = 6;
+  optional string body = 7;
+  repeated string resources = 8;
+}
+
+message SkillListResponse {
+  repeated SkillInfo skills = 1;
+}
+
+message ListRemoteSkillsRequest {
+  string registry_id = 1;
+}
+
+message InstallSkillRequest {
+  string registry_id = 1;
+  string name = 2;
+}
+
+message UninstallSkillRequest {
+  string full_name = 1;
+}
+
+message GetSkillRequest {
+  string full_name = 1;
+  bool include_body = 2;
+}
+
+// Timer management
+message TimerInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string message_template = 4;
+  string timer_type = 5;
+  string timer_spec = 6;
+  string status = 7;
+  string session_id = 8;
+  int32 max_runs = 9;
+  int32 run_count = 10;
+  string last_run_at = 11;
+  string next_run_at = 12;
+  string created_at = 13;
+}
+
+message ListTimersRequest {
+  string session_id = 1;
+}
+
+message TimerListResponse {
+  repeated TimerInfo timers = 1;
+}
+
+message CancelTimerRequest {
+  string timer_id = 1;
+}
+
+// ForkSession
+message ForkSessionRequest {
+  string session_id = 1;
+  optional string purpose = 2;
+}
+
+message ForkSessionResponse {
+  SessionInfo session = 1;
+  int32 messages_copied = 2;
+}
+
+// UserQuestion
+message UserQuestionRequest {
+  string session_id = 1;
+  string question = 2;
+}
+
+message UserQuestionEvent {
+  string temp_session_id = 1;
+  oneof event {
+    ThinkingEvent thinking = 2;
+    ResponseEvent response = 3;
+    DoneEvent done = 4;
+    ErrorEvent error = 5;
+  }
+}
+
+message ThinkingEvent {
+  string content = 1;
+  bool streaming = 2;
+}
+
+message ResponseEvent {
+  string content = 1;
+  bool streaming = 2;
+}
+
+message DoneEvent {
+  string message_id = 1;
+  int32 input_tokens = 2;
+  int32 output_tokens = 3;
+}
+
+message ErrorEvent {
+  string message = 1;
+  string code = 2;
+}
+
+// Session management for chatroom
+message GetOrCreateSessionByExternalIdRequest {
+  string external_id = 1;
+  string name = 2;
+  optional string purpose = 3;
+  optional string system_prompt = 4;
+  optional string provider_name = 5;
+}
+
+message GetSessionByExternalIdRequest {
+  string external_id = 1;
+}
+
+message AddMessageToSessionRequest {
+  string session_id = 1;
+  string role = 2;
+  string content = 3;
+}
