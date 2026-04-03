@@ -50,3 +50,6 @@ logs/
 # Build artifacts
 /gen/
 /bin/
+# Devenv
+.devenv/
+devenv.lock

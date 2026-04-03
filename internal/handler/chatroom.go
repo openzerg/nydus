@@ -5,23 +5,34 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
 
 	"github.com/openzerg/nydus/gen/nydus/v1"
+	mutalisk "github.com/openzerg/nydus/internal/mutalisk"
 	"github.com/openzerg/nydus/internal/store"
 )
+
+// InstanceIPResolver is a function that returns the IP of a given instance ID.
+// Returns empty string if unknown.
+type InstanceIPResolver func(instanceID string) string
 
 type ChatroomHandler struct {
 	store               *store.Store
 	messageSubscription *store.MessageSubscriptionManager
+	getInstanceIP       InstanceIPResolver
+	mutaliskPort        int
 }
 
-func NewChatroomHandler(s *store.Store, msm *store.MessageSubscriptionManager) *ChatroomHandler {
+func NewChatroomHandler(s *store.Store, msm *store.MessageSubscriptionManager, getIP InstanceIPResolver, mutaliskPort int) *ChatroomHandler {
 	return &ChatroomHandler{
 		store:               s,
 		messageSubscription: msm,
+		getInstanceIP:       getIP,
+		mutaliskPort:        mutaliskPort,
 	}
 }
 
@@ -270,6 +281,12 @@ func (h *ChatroomHandler) SendMessage(ctx context.Context, req *connect.Request[
 
 	h.messageSubscription.Broadcast(req.Msg.ChatroomId, message)
 
+	// If the message is from a human, dispatch it to all instance (agent) members
+	// asynchronously so as not to block the response.
+	if req.Msg.SenderType == "human" {
+		go h.dispatchToAgents(req.Msg.ChatroomId, req.Msg.SenderId, req.Msg.Content)
+	}
+
 	return connect.NewResponse(&nydusv1.Message{
 		Id:         message.ID,
 		ChatroomId: message.ChatroomID,
@@ -279,6 +296,74 @@ func (h *ChatroomHandler) SendMessage(ctx context.Context, req *connect.Request[
 		ReplyTo:    message.ReplyTo,
 		CreatedAt:  message.CreatedAt,
 	}), nil
+}
+
+// dispatchToAgents finds all instance members of the chatroom and sends the
+// human message to their Mutalisk sessions via AddMessageToSession.
+func (h *ChatroomHandler) dispatchToAgents(chatroomID, senderID, content string) {
+	instanceMembers, err := h.store.GetInstanceMembers(chatroomID)
+	if err != nil {
+		log.Printf("[nydus] dispatchToAgents: failed to list instance members for chatroom %s: %v", chatroomID, err)
+		return
+	}
+
+	for _, m := range instanceMembers {
+		instanceID := m.MemberID
+		go h.dispatchToAgent(chatroomID, instanceID, senderID, content)
+	}
+}
+
+// dispatchToAgent sends a message to a single agent instance's Mutalisk session.
+func (h *ChatroomHandler) dispatchToAgent(chatroomID, instanceID, senderID, content string) {
+	// Build Mutalisk base URL from instance IP
+	ip := h.getInstanceIP(instanceID)
+	if ip == "" {
+		log.Printf("[nydus] dispatchToAgent: unknown IP for instance %s, skipping", instanceID)
+		return
+	}
+
+	baseURL := fmt.Sprintf("http://%s:%d", ip, h.mutaliskPort)
+	client := mutalisk.NewClient(&http.Client{}, baseURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// external_id = chatroom_id:instance_id (unique session per chatroom per agent)
+	externalID := fmt.Sprintf("%s:%s", chatroomID, instanceID)
+	sessionName := fmt.Sprintf("chatroom-%s", chatroomID)
+
+	// Get or create a session for this chatroom+instance pair
+	session, err := client.GetOrCreateSessionByExternalId(ctx, externalID, sessionName, "", "", "")
+	if err != nil {
+		log.Printf("[nydus] dispatchToAgent: failed to get/create session for instance %s in chatroom %s: %v", instanceID, chatroomID, err)
+		return
+	}
+
+	sessionID := session.GetId()
+
+	// Record session mapping in store (upsert)
+	existing, _ := h.store.GetChatroomSession(chatroomID, instanceID)
+	if existing == nil {
+		_ = h.store.CreateChatroomSession(&store.ChatroomSession{
+			ID:         generateID(),
+			ChatroomID: chatroomID,
+			InstanceID: instanceID,
+			SessionID:  sessionID,
+			ExternalID: externalID,
+			CreatedAt:  time.Now().Unix(),
+		})
+	} else if existing.SessionID != sessionID {
+		_ = h.store.UpdateChatroomSession(chatroomID, instanceID, sessionID)
+	}
+
+	// Add the human message to the agent's session
+	_, err = client.AddMessageToSession(ctx, sessionID, "user", fmt.Sprintf("[%s]: %s", senderID, content))
+	if err != nil {
+		log.Printf("[nydus] dispatchToAgent: failed to add message to session %s for instance %s: %v", sessionID, instanceID, err)
+		return
+	}
+
+	log.Printf("[nydus] dispatchToAgent: dispatched message to instance %s session %s", instanceID, sessionID)
 }
 
 func (h *ChatroomHandler) GetMessageHistory(ctx context.Context, req *connect.Request[nydusv1.GetMessageHistoryRequest]) (*connect.Response[nydusv1.GetMessageHistoryResponse], error) {
