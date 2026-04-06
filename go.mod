@@ -5,7 +5,8 @@ go 1.25.7
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/mattn/go-sqlite3 v1.14.24
-	github.com/openzerg/common v0.0.0-20260405184926-07e27a550d0a
+	github.com/openzerg/common v0.0.0-20260406082218-8868eb2e01e8
+	github.com/rs/cors v1.11.1
 	golang.org/x/net v0.39.0
 )
 
