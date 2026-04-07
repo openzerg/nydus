@@ -61,11 +61,7 @@ func (h *Handler) Subscribe(ctx context.Context, req *connect.Request[nydusv1.Su
 		}
 	}
 
-	if err := h.store.UpsertSubscriber(&store.Subscriber{
-		InstanceID:   instanceID,
-		EventTypes:   req.Msg.EventTypes,
-		SubscribedAt: time.Now().Unix(),
-	}); err != nil {
+	if err := h.store.UpsertSubscriber(instanceID, "", req.Msg.EventTypes); err != nil {
 		log.Printf("[nydus] save subscriber: %v", err)
 	}
 
