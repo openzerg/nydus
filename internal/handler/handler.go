@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"time"
 
@@ -209,6 +210,10 @@ func (h *Handler) UpdateMemberRole(ctx context.Context, req *connect.Request[nyd
 // ── Messages ─────────────────────────────────────────────────────────────────
 
 func (h *Handler) SendMessage(ctx context.Context, req *connect.Request[nydusv1.SendMessageRequest]) (*connect.Response[nydusv1.Message], error) {
+	// Verify chatroom exists
+	if _, err := h.store.GetChatroom(req.Msg.ChatroomId); err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("chatroom %s not found", req.Msg.ChatroomId))
+	}
 	id, err := randomHex(8)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)

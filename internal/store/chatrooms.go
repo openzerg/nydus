@@ -157,7 +157,7 @@ func (s *Store) AddMember(chatroomID string, m *nydusv1.Member) error {
 		JoinedAt:   m.JoinedAt,
 	}
 	_, err := s.db.NewInsert().Model(row).
-		On("CONFLICT (chatroom_id, member_id) DO UPDATE SET member_type=EXCLUDED.member_type, role=EXCLUDED.role").
+		On("CONFLICT DO UPDATE SET member_type=EXCLUDED.member_type, role=EXCLUDED.role").
 		Exec(context.Background())
 	return err
 }
