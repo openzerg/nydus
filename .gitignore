@@ -31,3 +31,5 @@ logs/
 .env.*.local.devenv/
 *.db
 *.sqlite
+result
+result-*
