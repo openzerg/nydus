@@ -1,5 +1,5 @@
 # Binaries
-nydus
+/nydus
 *.exe
 *.exe~
 *.dll

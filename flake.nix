@@ -30,8 +30,8 @@
         pname = "nydus";
         version = "0.1.0";
         src = ./.;
-        ldflags = [ "-s" "-w" ];
-        CGO_ENABLED = "1";
+        vendorHash = "sha256-99Z2y8AXTdwDfesHgKZwUQ9woh4jXHJBmhRI+Q4EGt8=";
+        env.CGO_ENABLED = "1";
         buildInputs = with pkgs; [ sqlite.dev ];
         nativeBuildInputs = with pkgs; [ gcc ];
       };
