@@ -13,10 +13,12 @@ RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o nydus ./cmd/nydus
 
 FROM docker.io/library/alpine:3.23
 
-RUN apk add --no-cache ca-certificates sqlite-libs bash
+RUN apk add --no-cache ca-certificates sqlite-libs
 
 WORKDIR /app
 COPY --from=builder /app/nydus .
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 ENV NYDUS_PORT=15318
 ENV NYDUS_DB=/tmp/nydus.db
@@ -24,4 +26,5 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 EXPOSE 15318
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["./nydus"]
