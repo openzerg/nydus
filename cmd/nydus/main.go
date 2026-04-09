@@ -127,13 +127,13 @@ func registerWithCerebrate(ctx context.Context, cfg *config.Config) {
 				return
 			case <-ticker.C:
 				if err := cc.Heartbeat(ctx, info.InstanceId); err != nil {
-					log.Printf("[nydus] heartbeat failed: %v", err)
-					if r, e := cc.Login(ctx, cfg.AdminToken); e == nil {
-						cc.SetToken(r.UserToken)
-					}
+					log.Printf("[nydus] heartbeat failed: %v, re-registering", err)
+					ticker.Stop()
+					goto reRegister
 				}
 			}
 		}
+	reRegister:
 	}
 }
 
