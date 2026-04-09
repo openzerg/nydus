@@ -34,13 +34,28 @@ type Member struct {
 type Message struct {
 	bun.BaseModel `bun:"table:messages,alias:msg"`
 
-	MessageID  string `bun:"message_id,pk"`
-	ChatroomID string `bun:"chatroom_id,notnull"`
-	SenderID   string `bun:"sender_id,notnull"`
-	SenderType string `bun:"sender_type,default:'user'"`
-	Content    string `bun:"content,default:''"`
-	Metadata   string `bun:"metadata,type:text,default:'{}'"`
-	CreatedAt  int64  `bun:"created_at,notnull"`
+	MessageID   string `bun:"message_id,pk"`
+	ChatroomID  string `bun:"chatroom_id,notnull"`
+	SenderID    string `bun:"sender_id,notnull"`
+	SenderType  string `bun:"sender_type,default:'user'"`
+	Content     string `bun:"content,default:''"`
+	Metadata    string `bun:"metadata,type:text,default:'{}'"`
+	CreatedAt   int64  `bun:"created_at,notnull"`
+	MessageType string `bun:"message_type,default:'text'"`
+	UpdatedAt   int64  `bun:"updated_at,default:0"`
+	Deleted     int    `bun:"deleted,default:0"`
+	ReplyToID   string `bun:"reply_to_id,default:''"`
+	Attachments string `bun:"attachments,type:text,default:'[]'"`
+	Mentions    string `bun:"mentions,type:text,default:'[]'"`
+}
+
+type Reaction struct {
+	bun.BaseModel `bun:"table:reactions,alias:r"`
+
+	MessageID string `bun:"message_id,notnull"`
+	Emoji     string `bun:"emoji,notnull"`
+	UserID    string `bun:"user_id,notnull"`
+	CreatedAt int64  `bun:"created_at,notnull"`
 }
 
 // ── Chatrooms ─────────────────────────────────────────────────────────────────
@@ -222,17 +237,108 @@ func (s *Store) UpdateMemberRole(chatroomID, memberID, role string) (*nydusv1.Me
 
 func (s *Store) SaveMessage(msg *nydusv1.Message) error {
 	meta, _ := json.Marshal(msg.Metadata)
+	attachments, _ := json.Marshal(msg.Attachments)
+	mentions, _ := json.Marshal(msg.Mentions)
+	msgType := "text"
+	switch msg.MessageType {
+	case nydusv1.MessageType_MESSAGE_TYPE_IMAGE:
+		msgType = "image"
+	case nydusv1.MessageType_MESSAGE_TYPE_FILE:
+		msgType = "file"
+	case nydusv1.MessageType_MESSAGE_TYPE_SYSTEM:
+		msgType = "system"
+	}
 	row := &Message{
-		MessageID:  msg.MessageId,
-		ChatroomID: msg.ChatroomId,
-		SenderID:   msg.SenderId,
-		SenderType: msg.SenderType,
-		Content:    msg.Content,
-		Metadata:   string(meta),
-		CreatedAt:  msg.CreatedAt,
+		MessageID:   msg.MessageId,
+		ChatroomID:  msg.ChatroomId,
+		SenderID:    msg.SenderId,
+		SenderType:  msg.SenderType,
+		Content:     msg.Content,
+		Metadata:    string(meta),
+		CreatedAt:   msg.CreatedAt,
+		MessageType: msgType,
+		UpdatedAt:   msg.UpdatedAt,
+		ReplyToID:   msg.ReplyToId,
+		Attachments: string(attachments),
+		Mentions:    string(mentions),
 	}
 	_, err := s.db.NewInsert().Model(row).Exec(context.Background())
 	return err
+}
+
+func (s *Store) UpdateMessage(msg *nydusv1.Message) error {
+	attachments, _ := json.Marshal(msg.Attachments)
+	mentions, _ := json.Marshal(msg.Mentions)
+	_, err := s.db.NewUpdate().TableExpr("messages").
+		Set("content = ?", msg.Content).
+		Set("updated_at = ?", msg.UpdatedAt).
+		Set("attachments = ?", string(attachments)).
+		Set("mentions = ?", string(mentions)).
+		Where("message_id = ? AND chatroom_id = ?", msg.MessageId, msg.ChatroomId).
+		Exec(context.Background())
+	return err
+}
+
+func (s *Store) DeleteMessage(chatroomID, messageID string) error {
+	now := time.Now().Unix()
+	_, err := s.db.NewUpdate().TableExpr("messages").
+		Set("deleted = 1").
+		Set("updated_at = ?", now).
+		Where("message_id = ? AND chatroom_id = ?", messageID, chatroomID).
+		Exec(context.Background())
+	return err
+}
+
+func (s *Store) AddReaction(chatroomID, messageID, emoji, userID string) error {
+	now := time.Now().Unix()
+	row := &Reaction{
+		MessageID: messageID,
+		Emoji:     emoji,
+		UserID:    userID,
+		CreatedAt: now,
+	}
+	_, err := s.db.NewInsert().Model(row).
+		On("CONFLICT DO NOTHING").
+		Exec(context.Background())
+	return err
+}
+
+func (s *Store) RemoveReaction(chatroomID, messageID, emoji, userID string) error {
+	_, err := s.db.NewDelete().TableExpr("reactions").
+		Where("message_id = ? AND emoji = ? AND user_id = ?", messageID, emoji, userID).
+		Exec(context.Background())
+	return err
+}
+
+func (s *Store) GetReactions(messageID string) ([]*nydusv1.Reaction, error) {
+	ctx := context.Background()
+	type reactionRow struct {
+		Emoji  string `bun:"emoji"`
+		UserID string `bun:"user_id"`
+	}
+	var rows []reactionRow
+	err := s.db.NewSelect().TableExpr("reactions").
+		ColumnExpr("emoji, user_id").
+		Where("message_id = ?", messageID).
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// Group by emoji
+	reactionMap := make(map[string]*nydusv1.Reaction)
+	for _, r := range rows {
+		if _, ok := reactionMap[r.Emoji]; !ok {
+			reactionMap[r.Emoji] = &nydusv1.Reaction{Emoji: r.Emoji}
+		}
+		reactionMap[r.Emoji].UserIds = append(reactionMap[r.Emoji].UserIds, r.UserID)
+	}
+
+	reactions := make([]*nydusv1.Reaction, 0, len(reactionMap))
+	for _, r := range reactionMap {
+		reactions = append(reactions, r)
+	}
+	return reactions, nil
 }
 
 func (s *Store) GetMessageHistory(chatroomID string, limit, offset int32) ([]*nydusv1.Message, int32, error) {
@@ -242,17 +348,23 @@ func (s *Store) GetMessageHistory(chatroomID string, limit, offset int32) ([]*ny
 	}
 
 	type msgRow struct {
-		MessageID  string `bun:"message_id"`
-		ChatroomID string `bun:"chatroom_id"`
-		SenderID   string `bun:"sender_id"`
-		SenderType string `bun:"sender_type"`
-		Content    string `bun:"content"`
-		Metadata   string `bun:"metadata"`
-		CreatedAt  int64  `bun:"created_at"`
+		MessageID   string `bun:"message_id"`
+		ChatroomID  string `bun:"chatroom_id"`
+		SenderID    string `bun:"sender_id"`
+		SenderType  string `bun:"sender_type"`
+		Content     string `bun:"content"`
+		Metadata    string `bun:"metadata"`
+		CreatedAt   int64  `bun:"created_at"`
+		MessageType string `bun:"message_type"`
+		UpdatedAt   int64  `bun:"updated_at"`
+		Deleted     int    `bun:"deleted"`
+		ReplyToID   string `bun:"reply_to_id"`
+		Attachments string `bun:"attachments"`
+		Mentions    string `bun:"mentions"`
 	}
 
 	q := s.db.NewSelect().TableExpr("messages").
-		ColumnExpr("message_id, chatroom_id, sender_id, sender_type, content, metadata, created_at").
+		ColumnExpr("message_id, chatroom_id, sender_id, sender_type, content, metadata, created_at, message_type, updated_at, deleted, reply_to_id, attachments, mentions").
 		Where("chatroom_id = ?", chatroomID)
 
 	total, err := q.Count(ctx)
@@ -271,8 +383,26 @@ func (s *Store) GetMessageHistory(chatroomID string, limit, offset int32) ([]*ny
 			MessageId: r.MessageID, ChatroomId: r.ChatroomID,
 			SenderId: r.SenderID, SenderType: r.SenderType,
 			Content: r.Content, CreatedAt: r.CreatedAt,
+			UpdatedAt: r.UpdatedAt, Deleted: r.Deleted == 1, ReplyToId: r.ReplyToID,
+		}
+		switch r.MessageType {
+		case "image":
+			m.MessageType = nydusv1.MessageType_MESSAGE_TYPE_IMAGE
+		case "file":
+			m.MessageType = nydusv1.MessageType_MESSAGE_TYPE_FILE
+		case "system":
+			m.MessageType = nydusv1.MessageType_MESSAGE_TYPE_SYSTEM
+		default:
+			m.MessageType = nydusv1.MessageType_MESSAGE_TYPE_TEXT
 		}
 		_ = json.Unmarshal([]byte(r.Metadata), &m.Metadata)
+		_ = json.Unmarshal([]byte(r.Attachments), &m.Attachments)
+		_ = json.Unmarshal([]byte(r.Mentions), &m.Mentions)
+
+		// Load reactions
+		reactions, _ := s.GetReactions(r.MessageID)
+		m.Reactions = reactions
+
 		msgs[i] = m
 	}
 	return msgs, int32(total), nil

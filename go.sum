@@ -10,6 +10,8 @@ github.com/mattn/go-sqlite3 v1.14.24 h1:tpSp2G2KyMnnQu99ngJ47EIkWVmliIizyZBfPrBW
 github.com/mattn/go-sqlite3 v1.14.24/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/openzerg/common v0.0.0-20260407071955-21c72a1090cc h1:iQ9OmLxv12u5Sf/8VXgS6f1OPQ5O42Iy7xWPzO+Rrx4=
 github.com/openzerg/common v0.0.0-20260407071955-21c72a1090cc/go.mod h1:zGnoCXMimcIC/SwhSzpwiUK1zWiI+QET0FCtTBZdk+8=
+github.com/openzerg/common v0.0.0-20260409073600-b4a9652c3440 h1:KOCFlsvdOgqxiwM4pA4nPHj5XbnDXahwnjKytpvY2es=
+github.com/openzerg/common v0.0.0-20260409073600-b4a9652c3440/go.mod h1:zGnoCXMimcIC/SwhSzpwiUK1zWiI+QET0FCtTBZdk+8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/puzpuzpuz/xsync/v3 v3.5.1 h1:GJYJZwO6IdxN/IKbneznS6yPkVC+c3zyY/j19c++5Fg=

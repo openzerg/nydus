@@ -210,7 +210,6 @@ func (h *Handler) UpdateMemberRole(ctx context.Context, req *connect.Request[nyd
 // ── Messages ─────────────────────────────────────────────────────────────────
 
 func (h *Handler) SendMessage(ctx context.Context, req *connect.Request[nydusv1.SendMessageRequest]) (*connect.Response[nydusv1.Message], error) {
-	// Verify chatroom exists
 	if _, err := h.store.GetChatroom(req.Msg.ChatroomId); err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("chatroom %s not found", req.Msg.ChatroomId))
 	}
@@ -219,19 +218,107 @@ func (h *Handler) SendMessage(ctx context.Context, req *connect.Request[nydusv1.
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	msg := &nydusv1.Message{
-		MessageId:  id,
-		ChatroomId: req.Msg.ChatroomId,
-		SenderId:   req.Msg.SenderId,
-		SenderType: req.Msg.SenderType,
-		Content:    req.Msg.Content,
-		Metadata:   req.Msg.Metadata,
-		CreatedAt:  time.Now().Unix(),
+		MessageId:   id,
+		ChatroomId:  req.Msg.ChatroomId,
+		SenderId:    req.Msg.SenderId,
+		SenderType:  req.Msg.SenderType,
+		Content:     req.Msg.Content,
+		Metadata:    req.Msg.Metadata,
+		CreatedAt:   time.Now().Unix(),
+		MessageType: req.Msg.MessageType,
+		ReplyToId:   req.Msg.ReplyToId,
+		Attachments: req.Msg.Attachments,
+		Mentions:    req.Msg.Mentions,
 	}
 	if err := h.store.SaveMessage(msg); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	h.messages.publish(msg)
 	return connect.NewResponse(msg), nil
+}
+
+func (h *Handler) EditMessage(ctx context.Context, req *connect.Request[nydusv1.EditMessageRequest]) (*connect.Response[nydusv1.Message], error) {
+	msgs, _, err := h.store.GetMessageHistory(req.Msg.ChatroomId, 1000, 0)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	var msg *nydusv1.Message
+	for _, m := range msgs {
+		if m.MessageId == req.Msg.MessageId {
+			msg = m
+			break
+		}
+	}
+	if msg == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("message not found"))
+	}
+	msg.Content = req.Msg.Content
+	msg.UpdatedAt = time.Now().Unix()
+	if err := h.store.UpdateMessage(msg); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	h.messages.publish(msg)
+	return connect.NewResponse(msg), nil
+}
+
+func (h *Handler) DeleteMessage(ctx context.Context, req *connect.Request[nydusv1.DeleteMessageRequest]) (*connect.Response[nydusv1.Empty], error) {
+	if err := h.store.DeleteMessage(req.Msg.ChatroomId, req.Msg.MessageId); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&nydusv1.Empty{}), nil
+}
+
+func (h *Handler) ReactMessage(ctx context.Context, req *connect.Request[nydusv1.ReactMessageRequest]) (*connect.Response[nydusv1.Message], error) {
+	var err error
+	if req.Msg.Remove {
+		err = h.store.RemoveReaction(req.Msg.ChatroomId, req.Msg.MessageId, req.Msg.Emoji, req.Msg.UserId)
+	} else {
+		err = h.store.AddReaction(req.Msg.ChatroomId, req.Msg.MessageId, req.Msg.Emoji, req.Msg.UserId)
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	msgs, _, err := h.store.GetMessageHistory(req.Msg.ChatroomId, 1000, 0)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	for _, m := range msgs {
+		if m.MessageId == req.Msg.MessageId {
+			h.messages.publish(m)
+			return connect.NewResponse(m), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("message not found"))
+}
+
+func (h *Handler) Typing(ctx context.Context, req *connect.Request[nydusv1.TypingRequest]) (*connect.Response[nydusv1.Empty], error) {
+	h.messages.publishTyping(req.Msg.ChatroomId, &nydusv1.TypingEvent{
+		ChatroomId: req.Msg.ChatroomId,
+		UserId:     req.Msg.UserId,
+		UserName:   req.Msg.UserName,
+		Timestamp:  time.Now().Unix(),
+	})
+	return connect.NewResponse(&nydusv1.Empty{}), nil
+}
+
+func (h *Handler) SubscribeTyping(ctx context.Context, req *connect.Request[nydusv1.TypingRequest], stream *connect.ServerStream[nydusv1.TypingEvent]) error {
+	ch := h.messages.subscribeTyping(req.Msg.ChatroomId)
+	defer h.messages.unsubscribeTyping(req.Msg.ChatroomId)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := stream.Send(event); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (h *Handler) GetMessageHistory(ctx context.Context, req *connect.Request[nydusv1.GetMessageHistoryRequest]) (*connect.Response[nydusv1.GetMessageHistoryResponse], error) {

@@ -58,8 +58,9 @@ func (f *eventFanout) publish(event *nydusv1.Event) {
 
 // messageFanout manages per-chatroom message subscriptions.
 type messageFanout struct {
-	mu   sync.RWMutex
-	subs map[string]map[string]chan *nydusv1.Message // chatroomID → instanceID → chan
+	mu         sync.RWMutex
+	subs       map[string]map[string]chan *nydusv1.Message // chatroomID → instanceID → chan
+	typingSubs map[string]map[string]chan *nydusv1.TypingEvent
 }
 
 func newMessageFanout() *messageFanout {
@@ -94,6 +95,49 @@ func (f *messageFanout) publish(msg *nydusv1.Message) {
 	for _, ch := range f.subs[msg.ChatroomId] {
 		select {
 		case ch <- msg:
+		default:
+		}
+	}
+}
+
+func (f *messageFanout) subscribeTyping(chatroomID string) <-chan *nydusv1.TypingEvent {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.subs[chatroomID] == nil {
+		f.subs[chatroomID] = make(map[string]chan *nydusv1.Message)
+	}
+	ch := make(chan *nydusv1.TypingEvent, 16)
+	if f.typingSubs == nil {
+		f.typingSubs = make(map[string]map[string]chan *nydusv1.TypingEvent)
+	}
+	if f.typingSubs[chatroomID] == nil {
+		f.typingSubs[chatroomID] = make(map[string]chan *nydusv1.TypingEvent)
+	}
+	instanceID := make([]byte, 4)
+	f.typingSubs[chatroomID][string(instanceID)] = ch
+	return ch
+}
+
+func (f *messageFanout) unsubscribeTyping(chatroomID string) {
+	f.mu.Lock()
+	if f.typingSubs != nil && f.typingSubs[chatroomID] != nil {
+		for _, ch := range f.typingSubs[chatroomID] {
+			close(ch)
+		}
+		delete(f.typingSubs, chatroomID)
+	}
+	f.mu.Unlock()
+}
+
+func (f *messageFanout) publishTyping(chatroomID string, event *nydusv1.TypingEvent) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.typingSubs == nil || f.typingSubs[chatroomID] == nil {
+		return
+	}
+	for _, ch := range f.typingSubs[chatroomID] {
+		select {
+		case ch <- event:
 		default:
 		}
 	}

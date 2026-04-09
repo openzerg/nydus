@@ -44,14 +44,29 @@ CREATE TABLE IF NOT EXISTS messages (
     message_id  TEXT PRIMARY KEY,
     chatroom_id TEXT NOT NULL,
     sender_id   TEXT NOT NULL,
-    sender_type TEXT NOT NULL DEFAULT 'user',  -- user | instance | system
+    sender_type TEXT NOT NULL DEFAULT 'user',
     content     TEXT NOT NULL DEFAULT '',
-    metadata    TEXT NOT NULL DEFAULT '{}',    -- JSON
+    metadata    TEXT NOT NULL DEFAULT '{}',
     created_at  INTEGER NOT NULL,
+    message_type TEXT NOT NULL DEFAULT 'text',
+    updated_at  INTEGER NOT NULL DEFAULT 0,
+    deleted     INTEGER NOT NULL DEFAULT 0,
+    reply_to_id TEXT NOT NULL DEFAULT '',
+    attachments TEXT NOT NULL DEFAULT '[]',
+    mentions    TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY (chatroom_id) REFERENCES chatrooms(chatroom_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reactions (
+    message_id  TEXT NOT NULL,
+    emoji       TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (message_id, emoji, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_type      ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_ts        ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_messages_chatroom ON messages(chatroom_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_members_chatroom  ON members(chatroom_id);
+CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id);

@@ -5,7 +5,7 @@ go 1.25
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/mattn/go-sqlite3 v1.14.24
-	github.com/openzerg/common v0.0.0-20260407071955-21c72a1090cc
+	github.com/openzerg/common v0.0.0-20260409073600-b4a9652c3440
 	github.com/rs/cors v1.11.1
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
