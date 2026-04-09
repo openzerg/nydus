@@ -22,6 +22,7 @@ import (
 	"github.com/openzerg/nydus/internal/config"
 	"github.com/openzerg/nydus/internal/handler"
 	"github.com/openzerg/nydus/internal/store"
+	"github.com/openzerg/nydus/internal/upload"
 )
 
 func main() {
@@ -38,6 +39,12 @@ func main() {
 	mux := http.NewServeMux()
 	path, hdlr := nydusv1connect.NewNydusServiceHandler(h, connect.WithInterceptors())
 	mux.Handle(path, hdlr)
+
+	uploader := upload.New(cfg)
+	if uploader.Enabled() {
+		mux.Handle("/upload", uploader)
+		mux.HandleFunc("/files/", uploader.ServeDownload)
+	}
 
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -74,45 +81,56 @@ func main() {
 func registerWithCerebrate(ctx context.Context, cfg *config.Config) {
 	cc := client.NewCerebrateClient(cfg.CerebrateURL)
 
-	resp, err := cc.Login(ctx, cfg.AdminToken)
-	if err != nil {
-		log.Printf("[nydus] cerebrate login failed: %v", err)
-		return
-	}
-	cc.SetToken(resp.UserToken)
-
-	ip := localIP()
-	publicURL := cfg.PublicURL
-	if publicURL == "" {
-		publicURL = fmt.Sprintf("http://%s:%d", ip, cfg.Port)
-	}
-
-	info, err := cc.RegisterInstance(ctx, &cerebratev1.RegisterInstanceRequest{
-		Name:         "nydus",
-		InstanceType: "nydus",
-		Ip:           ip,
-		Port:         int32(cfg.Port),
-		Status:       "running",
-		Labels:       map[string]string{"public_url": publicURL},
-	})
-	if err != nil {
-		log.Printf("[nydus] cerebrate register failed: %v", err)
-		return
-	}
-	log.Printf("[nydus] registered with cerebrate, instance_id=%s", info.InstanceId)
-
-	// Send heartbeat every 30 seconds
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := cc.Heartbeat(ctx, info.InstanceId); err != nil {
-				log.Printf("[nydus] heartbeat failed: %v", err)
-				if r, e := cc.Login(ctx, cfg.AdminToken); e == nil {
-					cc.SetToken(r.UserToken)
+		resp, err := cc.Login(ctx, cfg.AdminToken)
+		if err != nil {
+			log.Printf("[nydus] cerebrate login failed: %v, retrying in 10s", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Second):
+				continue
+			}
+		}
+		cc.SetToken(resp.UserToken)
+
+		ip := localIP()
+		publicURL := cfg.PublicURL
+		if publicURL == "" {
+			publicURL = fmt.Sprintf("http://%s:%d", ip, cfg.Port)
+		}
+
+		info, err := cc.RegisterInstance(ctx, &cerebratev1.RegisterInstanceRequest{
+			Name:         "nydus",
+			InstanceType: "nydus",
+			Ip:           ip,
+			Port:         int32(cfg.Port),
+			Status:       "running",
+			Labels:       map[string]string{"public_url": publicURL},
+		})
+		if err != nil {
+			log.Printf("[nydus] cerebrate register failed: %v, retrying in 10s", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Second):
+				continue
+			}
+		}
+		log.Printf("[nydus] registered with cerebrate, instance_id=%s", info.InstanceId)
+
+		ticker := time.NewTicker(30 * time.Second)
+		for {
+			select {
+			case <-ctx.Done():
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				if err := cc.Heartbeat(ctx, info.InstanceId); err != nil {
+					log.Printf("[nydus] heartbeat failed: %v", err)
+					if r, e := cc.Login(ctx, cfg.AdminToken); e == nil {
+						cc.SetToken(r.UserToken)
+					}
 				}
 			}
 		}

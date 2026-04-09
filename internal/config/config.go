@@ -13,6 +13,12 @@ type Config struct {
 	JWTSecret    string
 	CerebrateURL string
 	AdminToken   string
+
+	S3Endpoint  string
+	S3Region    string
+	S3Bucket    string
+	S3AccessKey string
+	S3SecretKey string
 }
 
 func Load() *Config {
@@ -24,6 +30,12 @@ func Load() *Config {
 		JWTSecret:    getEnv("NYDUS_JWT_SECRET", "change-me-in-production"),
 		CerebrateURL: getEnv("CEREBRATE_URL", ""),
 		AdminToken:   getEnv("CEREBRATE_ADMIN_TOKEN", ""),
+
+		S3Endpoint:  getEnv("S3_ENDPOINT", ""),
+		S3Region:    getEnv("S3_REGION", "garage"),
+		S3Bucket:    getEnv("S3_BUCKET", ""),
+		S3AccessKey: getEnv("S3_ACCESS_KEY", ""),
+		S3SecretKey: getEnv("S3_SECRET_KEY", ""),
 	}
 }
 
