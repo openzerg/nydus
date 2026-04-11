@@ -16,12 +16,45 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o nydus ./cmd/nydus
 FROM docker.io/library/debian:trixie-slim
 
 WORKDIR /app
+
 COPY --from=builder /app/nydus .
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+
+RUN cat > /entrypoint.sh << 'EOF'
+#!/bin/sh
+set -e
+
+mkdir -p /root
+
+mkdir -p /etc/ssl/certs
+for cert in /nix/store/*-nss-cacert-*/etc/ssl/certs/ca-bundle.crt; do
+    if [ -f "$cert" ]; then
+        ln -sf "$cert" /etc/ssl/certs/ca-certificates.crt
+        export SSL_CERT_FILE="$cert"
+        export CURL_CA_BUNDLE="$cert"
+        export GIT_SSL_CAINFO="$cert"
+        export NIX_SSL_CERT_FILE="$cert"
+        break
+    fi
+done
+
+export NIX_REMOTE=daemon
+export NIX_CONFIG="experimental-features = nix-command flakes
+flake-registry = /tmp/nix-registry.json"
+export XDG_CACHE_HOME=/nix-cache
+
+NIX_BIN=$(ls -d /nix/store/*-nix-2.* 2>/dev/null | grep -v '\.drv$' | grep -v '\.patch$' | head -1)
+if [ -n "$NIX_BIN" ]; then
+    export PATH="${NIX_BIN}/bin:${PATH}"
+fi
+
+mkdir -p "${NYDUS_DB%/*}" 2>/dev/null || true
+
+exec "$@"
+EOF
+RUN chmod +x nydus /entrypoint.sh
 
 ENV NYDUS_PORT=15318
-ENV NYDUS_DB=/tmp/nydus.db
+ENV NYDUS_DB=/var/lib/nydus/nydus.db
 
 EXPOSE 15318
 
