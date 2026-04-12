@@ -42,8 +42,8 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/openzerg/common v0.0.0-20260411155357-63a12ec65567 h1:b5KDpjF0Bx2ss9/eGFC1oQP2QYqKq5FuTXiGHSoCEB0=
-github.com/openzerg/common v0.0.0-20260411155357-63a12ec65567/go.mod h1:zGnoCXMimcIC/SwhSzpwiUK1zWiI+QET0FCtTBZdk+8=
+github.com/openzerg/common v0.0.0-20260411220954-1ba8b0ec7a1e h1:c8ONEnMv3hdMREHCV3B4qMlevHSahZRxYlbcyfojQ/w=
+github.com/openzerg/common v0.0.0-20260411220954-1ba8b0ec7a1e/go.mod h1:zGnoCXMimcIC/SwhSzpwiUK1zWiI+QET0FCtTBZdk+8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/puzpuzpuz/xsync/v3 v3.5.1 h1:GJYJZwO6IdxN/IKbneznS6yPkVC+c3zyY/j19c++5Fg=

@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.14
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.99.0
-	github.com/openzerg/common v0.0.0-20260411155357-63a12ec65567
+	github.com/openzerg/common v0.0.0-20260411220954-1ba8b0ec7a1e
 	github.com/rs/cors v1.11.1
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
