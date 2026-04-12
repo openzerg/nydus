@@ -1,17 +1,21 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
 	nydusv1 "github.com/openzerg/common/gen/nydus/v1"
 	nydusv1connect "github.com/openzerg/common/gen/nydus/v1/nydusv1connect"
 
+	"github.com/openzerg/nydus/internal/config"
 	"github.com/openzerg/nydus/internal/store"
 )
 
@@ -21,13 +25,15 @@ type Handler struct {
 	store    *store.Store
 	events   *eventFanout
 	messages *messageFanout
+	cfg      *config.Config
 }
 
-func New(st *store.Store) *Handler {
+func New(st *store.Store, cfg *config.Config) *Handler {
 	return &Handler{
 		store:    st,
 		events:   newEventFanout(),
 		messages: newMessageFanout(),
+		cfg:      cfg,
 	}
 }
 
@@ -234,7 +240,132 @@ func (h *Handler) SendMessage(ctx context.Context, req *connect.Request[nydusv1.
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	h.messages.publish(msg)
+	go h.notifyMentionedInstances(msg)
 	return connect.NewResponse(msg), nil
+}
+
+func (h *Handler) notifyMentionedInstances(msg *nydusv1.Message) {
+	if len(msg.Mentions) == 0 {
+		return
+	}
+
+	members, err := h.store.ListMembers(msg.ChatroomId)
+	if err != nil {
+		log.Printf("[notify] failed to list members for chatroom %s: %v", msg.ChatroomId, err)
+		return
+	}
+
+	memberMap := make(map[string]*nydusv1.Member)
+	for i := range members {
+		memberMap[members[i].MemberId] = members[i]
+	}
+
+	for _, mention := range msg.Mentions {
+		member, ok := memberMap[mention.MemberId]
+		if !ok || member.MemberType != "instance" {
+			continue
+		}
+
+		agentURL := h.resolveAgentURL(member.MemberId)
+		if agentURL == "" {
+			log.Printf("[notify] could not resolve agent URL for %s", member.MemberId)
+			continue
+		}
+
+		mentionsData := make([]map[string]string, 0, len(msg.Mentions))
+		for _, m := range msg.Mentions {
+			mentionsData = append(mentionsData, map[string]string{
+				"member_id":   m.MemberId,
+				"member_name": m.MemberName,
+			})
+		}
+
+		payload, _ := json.Marshal(map[string]interface{}{
+			"chatroom_id": msg.ChatroomId,
+			"message_id":  msg.MessageId,
+			"sender_id":   msg.SenderId,
+			"sender_type": msg.SenderType,
+			"content":     msg.Content,
+			"mentions":    mentionsData,
+		})
+
+		notifyReq := map[string]interface{}{
+			"notify_type": "mention",
+			"source_id":   msg.ChatroomId,
+			"content":     fmt.Sprintf("[%s:%s] %s", msg.SenderType, msg.SenderId, msg.Content),
+			"payload":     string(payload),
+			"metadata": map[string]string{
+				"chatroom_id": msg.ChatroomId,
+				"message_id":  msg.MessageId,
+				"sender_id":   msg.SenderId,
+				"sender_type": msg.SenderType,
+			},
+		}
+
+		go h.pushNotify(agentURL, notifyReq)
+	}
+}
+
+func (h *Handler) resolveAgentURL(instanceID string) string {
+	if h.cfg.CerebrateURL == "" {
+		return ""
+	}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"instance_id": instanceID,
+	})
+
+	url := h.cfg.CerebrateURL + "/cerebrate.v1.CerebrateService/GetInstance"
+	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return ""
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if h.cfg.AdminToken != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+h.cfg.AdminToken)
+	}
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		log.Printf("[notify] failed to query cerebrate for %s: %v", instanceID, err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ""
+	}
+
+	instance, ok := result["instance"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	urlStr, _ := instance["url"].(string)
+	return urlStr
+}
+
+func (h *Handler) pushNotify(agentURL string, req map[string]interface{}) {
+	endpoint := agentURL + "/agent.v1.AgentService/ReceiveNotify"
+	body, _ := json.Marshal(req)
+
+	httpReq, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("[notify] failed to create request: %v", err)
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		log.Printf("[notify] failed to push to %s: %v", endpoint, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[notify] push to %s returned status %d", endpoint, resp.StatusCode)
+	}
 }
 
 func (h *Handler) EditMessage(ctx context.Context, req *connect.Request[nydusv1.EditMessageRequest]) (*connect.Response[nydusv1.Message], error) {

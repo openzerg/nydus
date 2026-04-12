@@ -34,7 +34,7 @@ func main() {
 	}
 	defer st.Close()
 
-	h := handler.New(st)
+	h := handler.New(st, cfg)
 
 	mux := http.NewServeMux()
 	path, hdlr := nydusv1connect.NewNydusServiceHandler(h, connect.WithInterceptors())
